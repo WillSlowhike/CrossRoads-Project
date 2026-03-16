@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Traffic Simulation</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: system-ui, sans-serif;
+      gap: 12px;
+      padding: 24px;
+    }
+    h1 {
+      color: #e0e0e0;
+      font-size: 18px;
+      font-weight: 500;
+      letter-spacing: 0.05em;
+    }
+    #sketch-container canvas { display: block; border-radius: 8px; }
+    #ui-bar {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      font-size: 13px;
+      color: #aaa;
+    }
+    #lives-display { font-weight: 600; color: #e0e0e0; }
+    #collision-display {
+      padding: 3px 10px;
+      border-radius: 4px;
+      border: 1px solid #444;
+      background: #2a2a2a;
+      color: #aaa;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    #collision-display.active {
+      background: #3a1010;
+      color: #f09595;
+      border-color: #f09595;
+    }
+  </style>
+</head>
+<body>
+  <h1>Traffic Simulation</h1>
+  <div id="sketch-container"></div>
+  <div id="ui-bar">
+    <span>Arrow keys to drive <strong style="color:#e05555;">red car</strong></span>
+    <span id="lives-display">Lives: 3</span>
+    <span id="collision-display">No collision</span>
+  </div>
+
+  <script>
+    new p5(function(p) {
+      const W = 600, H = 600;
+      let lmq, towMater, upDownCar;
+      let lives = 3, gameOver = false;
+      let intersection;
+      let lightTimer = 0;
+      let hitCooldown = 0;
+
+      const ROAD_CENTER_H = H / 2;
+      const ROAD_CENTER_V = W / 2;
+      const CAR_H = 25, CAR_W = 50;
+
+      class BoundingBox {
+        constructor(x, y, w, h) { this.x=x; this.y=y; this.w=w; this.h=h; }
+        collides(other) {
+          return this.x < other.x+other.w && this.x+this.w > other.x &&
+                 this.y < other.y+other.h && this.y+this.h > other.y;
+        }
+      }
+
+      class Car {
+        constructor(x, y, speed, r, g, b, vertical=false) {
+          this.x=x; this.y=y; this.speed=speed;
+          this.r=r; this.g=g; this.b=b;
+          this.vertical=vertical;
+          this.movingUp=true;
+          this.w = vertical ? CAR_H : CAR_W;
+          this.h = vertical ? CAR_W : CAR_H;
+        }
+        getBBox() { return new BoundingBox(this.x, this.y, this.w, this.h); }
+        draw() {
+          p.push();
+          if (this.vertical) {
+            p.translate(this.x + this.w/2, this.y + this.h/2);
+            p.rotate(p.HALF_PI);
+            p.translate(-CAR_W/2, -CAR_H/2);
+          } else {
+            p.translate(this.x, this.y);
+          }
+          p.fill(this.r, this.g, this.b);
+          p.noStroke();
+          p.rect(0, 0, CAR_W, CAR_H, 4);
+          p.fill(20);
+          p.ellipse(10, CAR_H, 12, 12);
+          p.ellipse(CAR_W-10, CAR_H, 12, 12);
+          p.fill(200, 220, 255, 180);
+          p.rect(CAR_W-12, 4, 10, 8, 2);
+          p.rect(2, 4, 10, 8, 2);
+          p.pop();
+        }
+        moveHorizontal() {
+          this.x += this.speed;
+          if (this.x > W) this.x = -this.w;
+        }
+        moveVertical() {
+          if (this.movingUp) this.y -= this.speed;
+          else this.y += this.speed;
+          if (this.y <= 0) this.movingUp = false;
+          if (this.y >= H - this.h) this.movingUp = true;
+        }
+        moveWithArrows() {
+          if (p.keyIsDown(p.UP_ARROW)) this.y -= this.speed;
+          if (p.keyIsDown(p.DOWN_ARROW)) this.y += this.speed;
+          if (p.keyIsDown(p.LEFT_ARROW)) this.x -= this.speed;
+          if (p.keyIsDown(p.RIGHT_ARROW)) this.x += this.speed;
+          this.x = p.constrain(this.x, 0, W - CAR_W);
+          this.y = p.constrain(this.y, 0, H - CAR_H);
+        }
+      }
+
+      class TrafficLight {
+        constructor(x, y) { this.x=x; this.y=y; this.isRed=true; }
+        toggle() { this.isRed = !this.isRed; }
+        draw() {
+          p.fill(60); p.noStroke();
+          p.rect(this.x-5, this.y, 10, 70, 3);
+          p.rect(this.x-15, this.y-10, 30, 70, 6);
+          p.fill(this.isRed ? p.color(220,50,50) : 60);
+          p.ellipse(this.x, this.y+10, 18, 18);
+          p.fill(!this.isRed ? p.color(50,200,80) : 60);
+          p.ellipse(this.x, this.y+40, 18, 18);
+        }
+      }
+
+      class Intersection {
+        constructor(x, y) {
+          this.x=x; this.y=y;
+          this.light = new TrafficLight(x+30, y-60);
+        }
+        draw() {
+          p.fill(100,100,105); p.noStroke();
+          p.rect(this.x-60, this.y-60, 120, 120);
+          this.light.draw();
+        }
+      }
+
+      function reset() {
+        towMater = new Car(-CAR_W, ROAD_CENTER_H - CAR_H/2, 3, 160, 82, 45, false);
+        upDownCar = new Car(ROAD_CENTER_V - CAR_H/2, -CAR_W, 2, 50, 180, 80, true);
+        lmq = new Car(80, ROAD_CENTER_H - CAR_H/2, 4, 220, 40, 40, false);
+        intersection = new Intersection(W/2, H/2);
+        lives = 3; gameOver = false; hitCooldown = 0;
+        document.getElementById('lives-display').textContent = 'Lives: 3';
+        let colEl = document.getElementById('collision-display');
+        colEl.textContent = 'No collision';
+        colEl.classList.remove('active');
+      }
+
+      p.setup = function() {
+        let cnv = p.createCanvas(W, H);
+        cnv.parent('sketch-container');
+        reset();
+      };
+
+      function drawRoads() {
+        p.fill(75,75,80); p.noStroke();
+        p.rect(0, H/2-35, W, 70);
+        p.rect(W/2-35, 0, 70, H);
+        p.stroke(220,220,180,140); p.strokeWeight(2);
+        p.drawingContext.setLineDash([18,14]);
+        p.line(0, H/2, W, H/2);
+        p.line(W/2, 0, W/2, H);
+        p.drawingContext.setLineDash([]);
+      }
+
+      function drawBBox(car, r, g, b) {
+        p.noFill();
+        p.stroke(r, g, b, 120);
+        p.strokeWeight(1);
+        p.rect(car.x, car.y, car.w, car.h);
+      }
+
+      p.draw = function() {
+        if (gameOver) {
+          p.background(15);
+          p.fill(255); p.textAlign(p.CENTER, p.CENTER); p.textSize(22);
+          p.text("Game Over", W/2, H/2-30);
+          p.textSize(14); p.fill(160);
+          p.text("Press R to restart", W/2, H/2+10);
+          return;
+        }
+
+        p.background(90,120,20);
+        drawRoads();
+        intersection.draw();
+
+        towMater.moveHorizontal();
+        upDownCar.moveVertical();
+        lmq.moveWithArrows();
+
+        lmq.draw(); towMater.draw(); upDownCar.draw();
+        drawBBox(lmq, 220,40,40);
+        drawBBox(towMater, 160,82,45);
+        drawBBox(upDownCar, 50,180,80);
+
+        lightTimer++;
+        if (lightTimer % 360 === 0) intersection.light.toggle();
+        if (hitCooldown > 0) hitCooldown--;
+
+        let c1 = lmq.getBBox().collides(towMater.getBBox());
+        let c2 = lmq.getBBox().collides(upDownCar.getBBox());
+        let colliding = c1 || c2;
+
+        let colEl = document.getElementById('collision-display');
+        if (colliding) {
+          colEl.textContent = 'Collision!';
+          colEl.classList.add('active');
+          if (hitCooldown === 0) {
+            lives--; hitCooldown = 90;
+            document.getElementById('lives-display').textContent = 'Lives: ' + lives;
+            if (lives <= 0) gameOver = true;
+          }
+        } else {
+          colEl.textContent = 'No collision';
+          colEl.classList.remove('active');
+        }
+      };
+
+      p.keyPressed = function() {
+        if (gameOver && (p.key === 'r' || p.key === 'R')) reset();
+      };
+
+    }, document.getElementById('sketch-container'));
+  </script>
+</body>
+</html>
