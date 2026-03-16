@@ -61,15 +61,15 @@
   <script>
     new p5(function(p) {
       const W = 600, H = 600;
-      let lmq, towMater, upDownCar;
+      let lmq, vertCars, trafficLights;
       let lives = 3, gameOver = false;
-      let intersection;
       let lightTimer = 0;
       let hitCooldown = 0;
+      let playerHasMoved = false;
 
       const ROAD_CENTER_H = H / 2;
-      const ROAD_CENTER_V = W / 2;
       const CAR_H = 25, CAR_W = 50;
+      const VERT_ROADS = [150, 300, 450];
 
       class BoundingBox {
         constructor(x, y, w, h) { this.x=x; this.y=y; this.w=w; this.h=h; }
@@ -89,8 +89,12 @@
           this.h = vertical ? CAR_W : CAR_H;
         }
         getBBox() { return new BoundingBox(this.x, this.y, this.w, this.h); }
-        draw() {
+        draw(immune=false) {
           p.push();
+          if (immune) {
+            let flash = Math.floor(p.frameCount / 8) % 2 === 0;
+            if (!flash) { p.pop(); return; }
+          }
           if (this.vertical) {
             p.translate(this.x + this.w/2, this.y + this.h/2);
             p.rotate(p.HALF_PI);
@@ -109,10 +113,6 @@
           p.rect(2, 4, 10, 8, 2);
           p.pop();
         }
-        moveHorizontal() {
-          this.x += this.speed;
-          if (this.x > W) this.x = -this.w;
-        }
         moveVertical() {
           if (this.movingUp) this.y -= this.speed;
           else this.y += this.speed;
@@ -120,6 +120,10 @@
           if (this.y >= H - this.h) this.movingUp = true;
         }
         moveWithArrows() {
+          if (p.keyIsDown(p.UP_ARROW) || p.keyIsDown(p.DOWN_ARROW) ||
+              p.keyIsDown(p.LEFT_ARROW) || p.keyIsDown(p.RIGHT_ARROW)) {
+            playerHasMoved = true;
+          }
           if (p.keyIsDown(p.UP_ARROW)) this.y -= this.speed;
           if (p.keyIsDown(p.DOWN_ARROW)) this.y += this.speed;
           if (p.keyIsDown(p.LEFT_ARROW)) this.x -= this.speed;
@@ -134,33 +138,29 @@
         toggle() { this.isRed = !this.isRed; }
         draw() {
           p.fill(60); p.noStroke();
-          p.rect(this.x-5, this.y, 10, 70, 3);
-          p.rect(this.x-15, this.y-10, 30, 70, 6);
+          p.rect(this.x - 5, this.y, 10, 70, 3);
+          p.rect(this.x - 15, this.y - 10, 30, 70, 6);
           p.fill(this.isRed ? p.color(220,50,50) : 60);
-          p.ellipse(this.x, this.y+10, 18, 18);
+          p.ellipse(this.x, this.y + 10, 18, 18);
           p.fill(!this.isRed ? p.color(50,200,80) : 60);
-          p.ellipse(this.x, this.y+40, 18, 18);
-        }
-      }
-
-      class Intersection {
-        constructor(x, y) {
-          this.x=x; this.y=y;
-          this.light = new TrafficLight(x+30, y-60);
-        }
-        draw() {
-          p.fill(100,100,105); p.noStroke();
-          p.rect(this.x-60, this.y-60, 120, 120);
-          this.light.draw();
+          p.ellipse(this.x, this.y + 40, 18, 18);
         }
       }
 
       function reset() {
-        towMater = new Car(-CAR_W, ROAD_CENTER_H - CAR_H/2, 3, 160, 82, 45, false);
-        upDownCar = new Car(ROAD_CENTER_V - CAR_H/2, -CAR_W, 2, 50, 180, 80, true);
-        lmq = new Car(80, ROAD_CENTER_H - CAR_H/2, 4, 220, 40, 40, false);
-        intersection = new Intersection(W/2, H/2);
-        lives = 3; gameOver = false; hitCooldown = 0;
+        vertCars = [
+          new Car(VERT_ROADS[0] - CAR_H/2, 100, 2, 50,  180, 80,  true),
+          new Car(VERT_ROADS[1] - CAR_H/2, 300, 3, 255, 165, 0,   true),
+          new Car(VERT_ROADS[2] - CAR_H/2, 500, 4, 160, 80,  220, true),
+        ];
+        vertCars[0].movingUp = true;
+        vertCars[1].movingUp = false;
+        vertCars[2].movingUp = true;
+
+        trafficLights = VERT_ROADS.map(rx => new TrafficLight(rx + 45, ROAD_CENTER_H - 105));
+
+        lmq = new Car(40, ROAD_CENTER_H - CAR_H/2, 4, 220, 40, 40, false);
+        lives = 3; gameOver = false; hitCooldown = 0; playerHasMoved = false;
         document.getElementById('lives-display').textContent = 'Lives: 3';
         let colEl = document.getElementById('collision-display');
         colEl.textContent = 'No collision';
@@ -175,12 +175,14 @@
 
       function drawRoads() {
         p.fill(75,75,80); p.noStroke();
-        p.rect(0, H/2-35, W, 70);
-        p.rect(W/2-35, 0, 70, H);
+        p.rect(0, ROAD_CENTER_H - 35, W, 70);
+        for (let rx of VERT_ROADS) p.rect(rx - 35, 0, 70, H);
+        p.fill(100,100,105);
+        for (let rx of VERT_ROADS) p.rect(rx - 35, ROAD_CENTER_H - 35, 70, 70);
         p.stroke(220,220,180,140); p.strokeWeight(2);
         p.drawingContext.setLineDash([18,14]);
-        p.line(0, H/2, W, H/2);
-        p.line(W/2, 0, W/2, H);
+        p.line(0, ROAD_CENTER_H, W, ROAD_CENTER_H);
+        for (let rx of VERT_ROADS) p.line(rx, 0, rx, H);
         p.drawingContext.setLineDash([]);
       }
 
@@ -203,27 +205,31 @@
 
         p.background(90,120,20);
         drawRoads();
-        intersection.draw();
+        for (let tl of trafficLights) tl.draw();
 
-        towMater.moveHorizontal();
-        upDownCar.moveVertical();
+        for (let vc of vertCars) vc.moveVertical();
         lmq.moveWithArrows();
 
-        lmq.draw(); towMater.draw(); upDownCar.draw();
+        lmq.draw(!playerHasMoved);
+        for (let vc of vertCars) vc.draw();
+
         drawBBox(lmq, 220,40,40);
-        drawBBox(towMater, 160,82,45);
-        drawBBox(upDownCar, 50,180,80);
+        for (let vc of vertCars) drawBBox(vc, vc.r, vc.g, vc.b);
+
+        if (!playerHasMoved) {
+          p.fill(255, 220, 80); p.noStroke();
+          p.textAlign(p.LEFT); p.textSize(12);
+          p.text("IMMUNE — press an arrow key to start", lmq.x, lmq.y - 8);
+        }
 
         lightTimer++;
-        if (lightTimer % 360 === 0) intersection.light.toggle();
+        if (lightTimer % 360 === 0) for (let tl of trafficLights) tl.toggle();
         if (hitCooldown > 0) hitCooldown--;
 
-        let c1 = lmq.getBBox().collides(towMater.getBBox());
-        let c2 = lmq.getBBox().collides(upDownCar.getBBox());
-        let colliding = c1 || c2;
+        let colliding = vertCars.some(vc => lmq.getBBox().collides(vc.getBBox()));
 
         let colEl = document.getElementById('collision-display');
-        if (colliding) {
+        if (colliding && playerHasMoved) {
           colEl.textContent = 'Collision!';
           colEl.classList.add('active');
           if (hitCooldown === 0) {
@@ -232,9 +238,12 @@
             if (lives <= 0) gameOver = true;
           }
         } else {
-          colEl.textContent = 'No collision';
+          colEl.textContent = colliding ? 'Immune' : 'No collision';
           colEl.classList.remove('active');
         }
+
+        p.fill(255); p.noStroke(); p.textAlign(p.LEFT); p.textSize(13);
+        p.text('Lives: ' + lives, 12, 20);
       };
 
       p.keyPressed = function() {
