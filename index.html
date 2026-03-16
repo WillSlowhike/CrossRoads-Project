@@ -27,9 +27,34 @@
     #sketch-container canvas { display: block; border-radius: 8px; }
     #ui-bar {
       display: flex;
-      gap: 20px;
+      gap: 16px;
       align-items: center;
+      justify-content: center;
       font-size: 13px;
+      color: #aaa;
+      flex-wrap: wrap;
+    }
+    .toggle-group {
+      display: flex;
+      border: 1px solid #444;
+      border-radius: 6px;
+      overflow: hidden;
+      font-size: 12px;
+    }
+    .toggle-group button {
+      padding: 4px 12px;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      font-family: system-ui, sans-serif;
+      transition: background 0.15s, color 0.15s;
+    }
+    .toggle-group button.active {
+      background: #e0e0e0;
+      color: #1a1a1a;
+    }
+    .toggle-group button:not(.active) {
+      background: #2a2a2a;
       color: #aaa;
     }
     #lives-display { font-weight: 600; color: #e0e0e0; }
@@ -50,15 +75,27 @@
   </style>
 </head>
 <body>
-  <h1>Traffic Simulation</h1>
+  <h1>CrossRoads-Project</h1>
   <div id="sketch-container"></div>
   <div id="ui-bar">
-    <span>Arrow keys to drive <strong style="color:#e05555;">red car</strong></span>
+    <span>Controls:</span>
+    <div class="toggle-group">
+      <button id="btn-arrows" class="active" onclick="setControls('arrows')">Arrow Keys</button>
+      <button id="btn-wasd" onclick="setControls('wasd')">WASD</button>
+    </div>
     <span id="lives-display">Lives: 3</span>
     <span id="collision-display">No collision</span>
   </div>
 
   <script>
+    let controlMode = 'arrows';
+
+    function setControls(mode) {
+      controlMode = mode;
+      document.getElementById('btn-arrows').className = mode === 'arrows' ? 'active' : '';
+      document.getElementById('btn-wasd').className = mode === 'wasd' ? 'active' : '';
+    }
+
     new p5(function(p) {
       const W = 600, H = 600;
       let lmq, vertCars, trafficLights;
@@ -119,15 +156,24 @@
           if (this.y <= 0) this.movingUp = false;
           if (this.y >= H - this.h) this.movingUp = true;
         }
-        moveWithArrows() {
-          if (p.keyIsDown(p.UP_ARROW) || p.keyIsDown(p.DOWN_ARROW) ||
-              p.keyIsDown(p.LEFT_ARROW) || p.keyIsDown(p.RIGHT_ARROW)) {
-            playerHasMoved = true;
+        moveWithControls() {
+          let up, down, left, right;
+          if (controlMode === 'arrows') {
+            up    = p.keyIsDown(p.UP_ARROW);
+            down  = p.keyIsDown(p.DOWN_ARROW);
+            left  = p.keyIsDown(p.LEFT_ARROW);
+            right = p.keyIsDown(p.RIGHT_ARROW);
+          } else {
+            up    = p.keyIsDown(87); // W
+            down  = p.keyIsDown(83); // S
+            left  = p.keyIsDown(65); // A
+            right = p.keyIsDown(68); // D
           }
-          if (p.keyIsDown(p.UP_ARROW)) this.y -= this.speed;
-          if (p.keyIsDown(p.DOWN_ARROW)) this.y += this.speed;
-          if (p.keyIsDown(p.LEFT_ARROW)) this.x -= this.speed;
-          if (p.keyIsDown(p.RIGHT_ARROW)) this.x += this.speed;
+          if (up || down || left || right) playerHasMoved = true;
+          if (up)    this.y -= this.speed;
+          if (down)  this.y += this.speed;
+          if (left)  this.x -= this.speed;
+          if (right) this.x += this.speed;
           this.x = p.constrain(this.x, 0, W - CAR_W);
           this.y = p.constrain(this.y, 0, H - CAR_H);
         }
@@ -156,9 +202,7 @@
         vertCars[0].movingUp = true;
         vertCars[1].movingUp = false;
         vertCars[2].movingUp = true;
-
         trafficLights = VERT_ROADS.map(rx => new TrafficLight(rx + 45, ROAD_CENTER_H - 105));
-
         lmq = new Car(40, ROAD_CENTER_H - CAR_H/2, 4, 220, 40, 40, false);
         lives = 3; gameOver = false; hitCooldown = 0; playerHasMoved = false;
         document.getElementById('lives-display').textContent = 'Lives: 3';
@@ -208,7 +252,7 @@
         for (let tl of trafficLights) tl.draw();
 
         for (let vc of vertCars) vc.moveVertical();
-        lmq.moveWithArrows();
+        lmq.moveWithControls();
 
         lmq.draw(!playerHasMoved);
         for (let vc of vertCars) vc.draw();
@@ -218,8 +262,9 @@
 
         if (!playerHasMoved) {
           p.fill(255, 220, 80); p.noStroke();
-          p.textAlign(p.LEFT); p.textSize(12);
-          p.text("IMMUNE — press an arrow key to start", lmq.x, lmq.y - 8);
+          p.textAlign(p.CENTER); p.textSize(12);
+          let label = controlMode === 'arrows' ? 'IMMUNE — press an arrow key to start' : 'IMMUNE — press WASD to start';
+          p.text(label, lmq.x + CAR_W/2, lmq.y - 8);
         }
 
         lightTimer++;
