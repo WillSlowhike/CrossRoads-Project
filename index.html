@@ -213,9 +213,21 @@
 
       p.setup = function() {
         let cnv = p.createCanvas(W, H);
+        const displaySize = Math.max(600, Math.min(window.innerWidth - 48, window.innerHeight - 140, 1000));
+        cnv.style('width', displaySize + 'px');
+        cnv.style('height', displaySize + 'px');
         cnv.parent('sketch-container');
+        window.addEventListener('resize', resizeDisplay);
         reset();
       };
+
+      function resizeDisplay() {
+        const canvas = document.querySelector('#sketch-container canvas');
+        if (!canvas) return;
+        const displaySize = Math.max(600, Math.min(window.innerWidth - 48, window.innerHeight - 140, 1000));
+        canvas.style.width = displaySize + 'px';
+        canvas.style.height = displaySize + 'px';
+      }
 
       function drawRoads() {
         p.fill(75,75,80); p.noStroke();
@@ -289,6 +301,13 @@
 
         p.fill(255); p.noStroke(); p.textAlign(p.LEFT); p.textSize(13);
         p.text('Lives: ' + lives, 12, 20);
+        const canvasEl = document.querySelector('#sketch-container canvas');
+        if (canvasEl) {
+          const displayW = canvasEl.clientWidth;
+          const displayH = canvasEl.clientHeight;
+          p.textAlign(p.RIGHT);
+          p.text(`Display: ${displayW} x ${displayH}`, W - 12, 20);
+        }
       };
 
       p.keyPressed = function() {
